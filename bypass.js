@@ -1,108 +1,164 @@
-(function() {
-    const detectBrowser = () => {
-        const ua = navigator.userAgent || navigator.vendor || window.opera;
-        return {
-            isInstagram: ua.includes('Instagram'),
-            isFacebook: ua.includes('FBAN') || ua.includes('FBAV'),
-            isSnapchat: ua.includes('Snapchat'),
-            isSafari: /^((?!chrome|android).)*safari/i.test(ua),
-            isChrome: /chrome|crios/i.test(ua),
-            isIOS: /iPad|iPhone|iPod/.test(ua) && !window.MSStream,
-            isAndroid: /android/i.test(ua),
-            iOSVersion: (() => {
-                const match = ua.match(/OS (\d+)_(\d+)_?(\d+)?/);
-                return match ? parseInt(match[1], 10) : 0;
-            })()
-        };
-    };
+// Browser escape configuration
+const bypassConfig = {
+  baseUrl: 'https://openinapp.com',
+  redirectDelay: 500,
+  maxAttempts: 3
+};
 
-    const tryMultipleRedirects = (urls, delay = 100) => {
-        let i = 0;
-        const tryNext = () => {
-            if (i < urls.length) {
-                window.location.href = urls[i];
-                i++;
-                setTimeout(() => {
-                    if (!document.hidden) {
-                        tryNext();
-                    }
-                }, delay);
-            }
-        };
-        tryNext();
+// Detect environment
+const browserInfo = {
+  isInApp: () => {
+    const ua = navigator.userAgent.toLowerCase();
+    return {
+      instagram: ua.includes('instagram'),
+      facebook: ua.includes('facebook'),
+      twitter: ua.includes('twitter'),
+      linkedin: ua.includes('linkedin'),
+      isInAppBrowser: ua.includes('wv') || // Android WebView
+                     /\{.*\}.*safari/i.test(ua) // iOS WebView
     };
+  },
+  
+  platform: () => {
+    const ua = navigator.userAgent.toLowerCase();
+    if (ua.includes('android')) return 'android';
+    if (ua.includes('iphone') || ua.includes('ipad')) return 'ios';
+    return 'desktop';
+  }
+};
 
-    const isCachedPage = () => {
-        return window.location.href.includes('webcache.googleusercontent.com') || 
-               window.location.href.includes('cache:');
-    };
+// Bypass methods
+const bypassMethods = {
+  // Method 1: Intent URL scheme bypass
+  intentUrlBypass: (url) => {
+    const intentUrl = `intent://${url.split('://')[1]}#Intent;` +
+                     `scheme=https;` +
+                     `package=com.openinapp;` +
+                     `S.browser_fallback_url=${encodeURIComponent(url)};` +
+                     `end`;
+    window.location.replace(intentUrl);
+  },
 
-    const getOriginalUrl = () => {
-        if (isCachedPage()) {
-            // Extract the original URL from Google's cache URL
-            const match = window.location.href.match(/(?:cache:|cache.*?\/)[^&]*?(https?:\/\/[^&]+)/i);
-            if (match && match[1]) {
-                return decodeURIComponent(match[1]);
-            }
-        }
-        return 'https://instabypass.vercel.app';
-    };
-
-    const browserInfo = detectBrowser();
-    const targetUrl = getOriginalUrl();
+  // Method 2: Timeout-based redirect chain
+  timeoutChainBypass: (url) => {
+    const start = Date.now();
     
-    try {
-        // First check if we're on a cached version
-        if (isCachedPage()) {
-            window.location.href = targetUrl;
-            return;
-        }
+    // Try app scheme
+    window.location.replace(`openinapp://${url.split('://')[1]}`);
+    
+    setTimeout(() => {
+      // If we're still here after delay, try universal link
+      if (Date.now() - start < bypassConfig.redirectDelay + 100) {
+        window.location.replace(url);
+      }
+    }, bypassConfig.redirectDelay);
+  },
 
-        if (browserInfo.isInstagram) {
-            if (browserInfo.isIOS) {
-                const redirectMethods = [
-                    `x-safari-${targetUrl}`,
-                    `x-safari-https://${targetUrl.replace('https://', '')}`,
-                    `safari-https://${targetUrl.replace('https://', '')}`,
-                    `x-web-search://?cache:${targetUrl}`,
-                    `com-apple-mobilesafari-tab:${targetUrl}`,
-                    `googlechrome://${targetUrl.replace('https://', '')}`,
-                    `chrome-open-url:${targetUrl}`,
-                    `https://www.google.com/search?q=${encodeURIComponent(targetUrl)}`,
-                    `https://webcache.googleusercontent.com/search?q=cache:${encodeURIComponent(targetUrl)}`
-                ];
-                
-                tryMultipleRedirects(redirectMethods);
-                
-            } else if (browserInfo.isAndroid) {
-                const androidMethods = [
-                    `intent://${targetUrl.replace('https://', '')}#Intent;scheme=https;package=com.android.chrome;end`,
-                    `googlechrome://navigate?url=${encodeURIComponent(targetUrl)}`,
-                    `chrome://navigate?url=${encodeURIComponent(targetUrl)}`,
-                    `intent://navigate?url=${encodeURIComponent(targetUrl)}#Intent;scheme=googlechrome;end`,
-                    `https://www.google.com/search?q=${encodeURIComponent(targetUrl)}`
-                ];
-                
-                tryMultipleRedirects(androidMethods);
-            }
-            
-            setTimeout(() => {
-                if (!document.hidden) {
-                    document.getElementById('status').innerText = 
-                        'If automatic redirect fails, please copy the link and open in your browser manually.';
-                }
-            }, 2000);
-            
-        } else if (browserInfo.isSafari) {
-            document.getElementById('status').innerText = 
-                'This page works best when opened from Instagram. Please open the link in Instagram first.';
-        } else {
-            document.getElementById('status').innerText = 
-                'This tool is designed to bypass Instagram\'s in-app browser. Please open the link from Instagram.';
-        }
-    } catch (error) {
-        console.error('Redirect failed:', error);
-        document.getElementById('status').innerText = 
-            'An error occurred. Please try opening this link from Instagram.';
+  // Method 3: iframe escape attempt
+  iframeBypass: (url) => {
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = url;
+    document.body.appendChild(iframe);
+    
+    setTimeout(() => {
+      window.location.replace(url);
+    }, 100);
+  },
+
+  // Method 4: Window open chain
+  windowOpenBypass: (url) => {
+    const newWin = window.open('about:blank');
+    if (newWin) {
+      newWin.location.replace(url);
+      window.location.replace(url);
     }
-})();
+  }
+};
+
+// Main bypass handler
+class BrowserBypass {
+  constructor() {
+    this.attempts = 0;
+    this.successfulEscape = false;
+  }
+
+  async attemptEscape(targetUrl) {
+    const browser = browserInfo.isInApp();
+    const platform = browserInfo.platform();
+    
+    // Track attempt
+    this.attempts++;
+    
+    // Different strategies based on browser/platform
+    if (platform === 'android') {
+      if (browser.instagram || browser.facebook) {
+        // Try intent URL first for social apps
+        bypassMethods.intentUrlBypass(targetUrl);
+        await this.verifyRedirect();
+      } else {
+        // Try timeout chain for other Android browsers
+        bypassMethods.timeoutChainBypass(targetUrl);
+      }
+    } 
+    else if (platform === 'ios') {
+      if (browser.isInAppBrowser) {
+        // iOS WebView needs special handling
+        bypassMethods.windowOpenBypass(targetUrl);
+        await this.verifyRedirect();
+        
+        if (!this.successfulEscape) {
+          bypassMethods.iframeBypass(targetUrl);
+        }
+      } else {
+        // Regular iOS Safari can use universal links
+        bypassMethods.timeoutChainBypass(targetUrl);
+      }
+    }
+    else {
+      // Desktop browsers - direct redirect
+      window.location.replace(targetUrl);
+    }
+  }
+
+  async verifyRedirect() {
+    return new Promise(resolve => {
+      const start = Date.now();
+      
+      const check = setInterval(() => {
+        if (document.hidden || !document.hasFocus()) {
+          this.successfulEscape = true;
+          clearInterval(check);
+          resolve(true);
+        }
+        
+        if (Date.now() - start > bypassConfig.redirectDelay) {
+          clearInterval(check);
+          resolve(false);
+        }
+      }, 50);
+    });
+  }
+
+  async execute(targetUrl) {
+    while (!this.successfulEscape && this.attempts < bypassConfig.maxAttempts) {
+      await this.attemptEscape(targetUrl);
+      
+      // Small delay between attempts
+      if (!this.successfulEscape) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }
+  }
+}
+
+// Initialize and execute bypass
+const bypass = new BrowserBypass();
+bypass.execute(bypassConfig.baseUrl);
+
+// Backup direct redirect
+setTimeout(() => {
+  if (!bypass.successfulEscape) {
+    window.location.replace(bypassConfig.baseUrl);
+  }
+}, bypassConfig.redirectDelay * bypassConfig.maxAttempts);
