@@ -1,164 +1,140 @@
-// Browser escape configuration
-const bypassConfig = {
-  baseUrl: 'https://openinapp.com',
-  redirectDelay: 500,
-  maxAttempts: 3
-};
-
-// Detect environment
-const browserInfo = {
-  isInApp: () => {
-    const ua = navigator.userAgent.toLowerCase();
-    return {
-      instagram: ua.includes('instagram'),
-      facebook: ua.includes('facebook'),
-      twitter: ua.includes('twitter'),
-      linkedin: ua.includes('linkedin'),
-      isInAppBrowser: ua.includes('wv') || // Android WebView
-                     /\{.*\}.*safari/i.test(ua) // iOS WebView
+(function() {
+    // Core configuration
+    const config = {
+        baseUrl: 'https://openinapp.com',
+        appId: '6695025',
+        userId: '2777126'
     };
-  },
-  
-  platform: () => {
-    const ua = navigator.userAgent.toLowerCase();
-    if (ua.includes('android')) return 'android';
-    if (ua.includes('iphone') || ua.includes('ipad')) return 'ios';
-    return 'desktop';
-  }
-};
 
-// Bypass methods
-const bypassMethods = {
-  // Method 1: Intent URL scheme bypass
-  intentUrlBypass: (url) => {
-    const intentUrl = `intent://${url.split('://')[1]}#Intent;` +
-                     `scheme=https;` +
-                     `package=com.openinapp;` +
-                     `S.browser_fallback_url=${encodeURIComponent(url)};` +
-                     `end`;
-    window.location.replace(intentUrl);
-  },
+    // Environment detection
+    const browser = (() => {
+        const ua = navigator.userAgent.toLowerCase();
+        if (ua.includes('instagram')) return 'instagram';
+        if (ua.includes('facebook')) return 'facebook';
+        return 'other';
+    })();
 
-  // Method 2: Timeout-based redirect chain
-  timeoutChainBypass: (url) => {
-    const start = Date.now();
-    
-    // Try app scheme
-    window.location.replace(`openinapp://${url.split('://')[1]}`);
-    
-    setTimeout(() => {
-      // If we're still here after delay, try universal link
-      if (Date.now() - start < bypassConfig.redirectDelay + 100) {
-        window.location.replace(url);
-      }
-    }, bypassConfig.redirectDelay);
-  },
+    const os = (() => {
+        const ua = navigator.userAgent.toLowerCase();
+        if (ua.includes('android')) return 'android';
+        if (ua.includes('iphone') || ua.includes('ipad')) return 'ios';
+        return 'other';
+    })();
 
-  // Method 3: iframe escape attempt
-  iframeBypass: (url) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = url;
-    document.body.appendChild(iframe);
-    
-    setTimeout(() => {
-      window.location.replace(url);
-    }, 100);
-  },
-
-  // Method 4: Window open chain
-  windowOpenBypass: (url) => {
-    const newWin = window.open('about:blank');
-    if (newWin) {
-      newWin.location.replace(url);
-      window.location.replace(url);
+    // App installation detection
+    function detectAppNotInstalled() {
+        const start = Date.now();
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                // If we haven't redirected after 500ms, assume app isn't installed
+                if (Date.now() - start > 500) {
+                    resolve(true);
+                }
+                resolve(false);
+            }, 501);
+        });
     }
-  }
-};
 
-// Main bypass handler
-class BrowserBypass {
-  constructor() {
-    this.attempts = 0;
-    this.successfulEscape = false;
-  }
+    // Handle Android Instagram/Facebook redirect
+    function handleSocialRedirect() {
+        const redirectParams = new URLSearchParams({
+            utm_source: 'inapp',
+            utm_medium: config.userId,
+            utm_campaign: 'Direct',
+            uid: config.appId
+        });
 
-  async attemptEscape(targetUrl) {
-    const browser = browserInfo.isInApp();
-    const platform = browserInfo.platform();
-    
-    // Track attempt
-    this.attempts++;
-    
-    // Different strategies based on browser/platform
-    if (platform === 'android') {
-      if (browser.instagram || browser.facebook) {
-        // Try intent URL first for social apps
-        bypassMethods.intentUrlBypass(targetUrl);
-        await this.verifyRedirect();
-      } else {
-        // Try timeout chain for other Android browsers
-        bypassMethods.timeoutChainBypass(targetUrl);
-      }
-    } 
-    else if (platform === 'ios') {
-      if (browser.isInAppBrowser) {
-        // iOS WebView needs special handling
-        bypassMethods.windowOpenBypass(targetUrl);
-        await this.verifyRedirect();
-        
-        if (!this.successfulEscape) {
-          bypassMethods.iframeBypass(targetUrl);
+        if (browser === 'instagram' && os === 'android') {
+            // Use the original redirect chain logic
+            let ogLink = window.location.href;
+            let productLink = '';
+            
+            // Construct redirect URL with proper parameters
+            let fullUrl = `${config.baseUrl}?${redirectParams.toString()}&redirect_to=${encodeURIComponent(ogLink)}`;
+            
+            // Try the redirect
+            window.location.replace(fullUrl);
         }
-      } else {
-        // Regular iOS Safari can use universal links
-        bypassMethods.timeoutChainBypass(targetUrl);
-      }
     }
-    else {
-      // Desktop browsers - direct redirect
-      window.location.replace(targetUrl);
-    }
-  }
 
-  async verifyRedirect() {
-    return new Promise(resolve => {
-      const start = Date.now();
-      
-      const check = setInterval(() => {
-        if (document.hidden || !document.hasFocus()) {
-          this.successfulEscape = true;
-          clearInterval(check);
-          resolve(true);
+    // Main redirect handler
+    async function handleRedirect() {
+        const start = Date.now();
+        let redirectHit = false;
+
+        // Try app-specific deep link first
+        const appDeepLink = `${config.baseUrl}?${new URLSearchParams({
+            utm_source: 'direct',
+            utm_medium: config.userId,
+            utm_campaign: 'app_open'
+        })}`;
+
+        // For Android
+        if (os === 'android') {
+            if (browser === 'instagram' || browser === 'facebook') {
+                handleSocialRedirect();
+            } else {
+                // Try intent URL with fallback
+                const intentUrl = `intent://${config.baseUrl.split('://')[1]}#Intent;` +
+                                `scheme=https;` +
+                                `package=com.openinapp;` +
+                                `S.browser_fallback_url=${encodeURIComponent(appDeepLink)};` +
+                                'end';
+                window.location.replace(intentUrl);
+            }
         }
-        
-        if (Date.now() - start > bypassConfig.redirectDelay) {
-          clearInterval(check);
-          resolve(false);
+        // For iOS
+        else if (os === 'ios') {
+            // Try universal link
+            window.location.replace(appDeepLink);
+            
+            // Check if app isn't installed
+            const appNotInstalled = await detectAppNotInstalled();
+            if (appNotInstalled) {
+                // Fallback to web URL
+                const webFallbackUrl = `${config.baseUrl}?${new URLSearchParams({
+                    utm_source: 'fallback',
+                    utm_medium: config.userId,
+                    utm_campaign: 'web_fallback'
+                })}`;
+                window.location.replace(webFallbackUrl);
+            }
         }
-      }, 50);
-    });
-  }
+        // For all other cases
+        else {
+            window.location.replace(appDeepLink);
+        }
 
-  async execute(targetUrl) {
-    while (!this.successfulEscape && this.attempts < bypassConfig.maxAttempts) {
-      await this.attemptEscape(targetUrl);
-      
-      // Small delay between attempts
-      if (!this.successfulEscape) {
-        await new Promise(r => setTimeout(r, 100));
-      }
+        // Fallback timeout from original code
+        setTimeout(() => {
+            if (!redirectHit) {
+                const _Link = window.location.href;
+                const _noapplink = window.location.href;
+                const _start = Date.now();
+
+                function noappfound() {
+                    const _now = Date.now();
+                    if (_now - _start > 500) {
+                        if (os === 'android' && browser === 'instagram') {
+                            handleSocialRedirect();
+                        }
+                        window.location.replace(_noapplink);
+                    }
+                }
+
+                if (os === 'android' && browser === 'instagram') {
+                    handleSocialRedirect();
+                }
+                
+                window.location.replace(_Link);
+                
+                if (os === 'ios') {
+                    setTimeout(noappfound, 501);
+                }
+            }
+        }, 1000);
     }
-  }
-}
 
-// Initialize and execute bypass
-const bypass = new BrowserBypass();
-bypass.execute(bypassConfig.baseUrl);
-
-// Backup direct redirect
-setTimeout(() => {
-  if (!bypass.successfulEscape) {
-    window.location.replace(bypassConfig.baseUrl);
-  }
-}, bypassConfig.redirectDelay * bypassConfig.maxAttempts);
+    // Initialize
+    handleRedirect();
+})();
