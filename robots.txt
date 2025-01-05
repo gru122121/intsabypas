@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://intsabypas.vercel.app/sitemap.xml 
