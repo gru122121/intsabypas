@@ -1,118 +1,105 @@
 (function() {
-    // Core variables from original code
-    const oia_base_url = 'https://nodeapi.openinapp.com/api/v1';
-    const redirect_url = 'https://openinapp.com'.split('://')[1];
-    const startTime = new Date();
-    const id_oia = '6695025';
-    const user_id_oia = '2777126';
-    
-    // Browser/OS detection from original code
-    let browser = navigator.userAgent?.toLowerCase();
-    browser = browser.includes('instagram') ? 'instagram' : 
-             browser.includes('facebook') ? 'facebook' : 'other';
-    
-    const os = navigator.userAgent?.toLowerCase().includes('android') ? 'android' : 
-              (navigator.userAgent?.toLowerCase().includes('iphone') || 
-               navigator.userAgent?.toLowerCase().includes('ipad')) ? 'ios' : 'other';
+    // Core configuration
+    const config = {
+        appId: 'com.openinapp.browser', // Mock app bundle ID
+        appStoreId: '1234567890',       // Mock App Store ID
+        playStoreId: 'com.openinapp',   // Mock Play Store ID
+        baseUrl: 'https://openinapp.com',
+        universalLink: 'https://openinapp.com/open'
+    };
 
-    // Mock 301 redirect response
-    function mock301Redirect(url) {
-        // Create a fake XHR to simulate 301
-        const xhr = new XMLHttpRequest();
-        xhr.open('GET', window.location.href, true);
-        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-        
-        // Force browser to see this as a 301 redirect
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === 4) {
-                // Create meta refresh as backup
-                const meta = document.createElement('meta');
-                meta.httpEquiv = "refresh";
-                meta.content = `0;url=${url}`;
-                document.head.appendChild(meta);
-                
-                // Force location change
-                window.location.replace(url);
-            }
-        };
-        
-        // Simulate network delay
+    // Browser/Platform detection
+    const browser = navigator.userAgent?.toLowerCase();
+    const isInstagram = browser.includes('instagram');
+    const isFacebook = browser.includes('facebook');
+    const isIOS = /iphone|ipad|ipod/.test(browser);
+    const isAndroid = /android/.test(browser);
+
+    // Mock app presence
+    function mockAppPresence() {
+        // Add app-specific meta tags
+        const metaTags = [
+            { name: 'apple-itunes-app', content: `app-id=${config.appStoreId}, app-argument=${window.location.href}` },
+            { name: 'google-play-app', content: `app-id=${config.playStoreId}` },
+            { property: 'al:ios:url', content: `openinapp://${window.location.href}` },
+            { property: 'al:ios:app_store_id', content: config.appStoreId },
+            { property: 'al:ios:app_name', content: 'OpenInApp Browser' },
+            { property: 'al:android:url', content: `openinapp://${window.location.href}` },
+            { property: 'al:android:package', content: config.playStoreId },
+            { property: 'al:android:app_name', content: 'OpenInApp Browser' }
+        ];
+
+        metaTags.forEach(tag => {
+            const meta = document.createElement('meta');
+            Object.keys(tag).forEach(key => meta[key] = tag[key]);
+            document.head.appendChild(meta);
+        });
+
+        // Add universal links
+        const linkTag = document.createElement('link');
+        linkTag.rel = 'alternate';
+        linkTag.href = config.universalLink;
+        document.head.appendChild(linkTag);
+    }
+
+    // Force external browser opening
+    function forceExternalBrowser() {
+        // Add meta tag to force external browser
+        const meta = document.createElement('meta');
+        meta.name = 'instagram:open-external-url-with-in-app-browser';
+        meta.content = 'false';
+        document.head.appendChild(meta);
+
+        // Add similar tags for other platforms
+        document.head.innerHTML += `
+            <meta name="facebook:open-external-url-with-in-app-browser" content="false">
+            <meta name="twitter:open-external-url-with-in-app-browser" content="false">
+            <meta name="snapchat:open-external-url-with-in-app-browser" content="false">
+        `;
+    }
+
+    // Simulate app deep linking
+    function simulateAppDeepLink() {
+        const appUrl = isIOS ? 
+            `openinapp://${window.location.href}` :
+            `intent://${window.location.href}#Intent;scheme=openinapp;package=${config.playStoreId};end`;
+
+        const storeUrl = isIOS ?
+            `https://apps.apple.com/app/id${config.appStoreId}` :
+            `https://play.google.com/store/apps/details?id=${config.playStoreId}`;
+
+        // Try app deep link first
+        window.location.href = appUrl;
+
+        // Fallback to store after delay
         setTimeout(() => {
-            xhr.abort();
-            // Add history entry to make it look like a server redirect
-            window.history.replaceState({}, '', url);
-            window.location.replace(url);
-        }, 10);
-        
-        xhr.send();
+            if (!document.hidden) {
+                window.location.href = storeUrl;
+            }
+        }, 500);
     }
 
     // Main bypass function
-    function bypassInstagram() {
-        let _Link = window.location.href;
-        let _start = Date.now();
-        let redirect_hit = false;
+    function bypassInAppBrowser() {
+        // 1. Mock app presence first
+        mockAppPresence();
 
-        if (os === 'android' && browser === 'instagram') {
-            let ogLink = window.location.href;
-            let link = '&link=' + encodeURIComponent(ogLink);
-            
-            // Construct redirect URL
-            let fullUrl = `https://${redirect_url}?utm_source=inapp&utm_medium=${user_id_oia}&utm_campaign=Direct&utm_content=&uid=${id_oia}${link}`;
-            
-            // Create fake 301 redirect
-            mock301Redirect(fullUrl);
-            
-            // Backup redirect chain
-            setTimeout(() => {
-                if (!redirect_hit) {
-                    // Add history state to make it look like we came from elsewhere
-                    window.history.pushState({}, '', ogLink);
-                    window.location.replace(fullUrl);
-                }
-            }, 500);
-        } else {
-            // For non-Instagram browsers, use normal redirect
-            window.location.replace(_Link);
+        // 2. Force external browser
+        forceExternalBrowser();
+
+        // 3. Try app/store redirect chain
+        if (isInstagram || isFacebook) {
+            simulateAppDeepLink();
         }
 
-        // Final fallback
+        // 4. Fallback to universal link
         setTimeout(() => {
-            if (!redirect_hit && os === 'android' && browser === 'instagram') {
-                let ogLink = window.location.href;
-                let link = '&link=' + encodeURIComponent(ogLink);
-                let fullUrl = `https://${redirect_url}?utm_source=inapp&utm_medium=${user_id_oia}&utm_campaign=Direct&utm_content=&uid=${id_oia}${link}`;
-                
-                // Try one last time with meta refresh
-                document.head.innerHTML += `<meta http-equiv="refresh" content="0;url=${fullUrl}">`;
-                window.location.replace(fullUrl);
+            if (!document.hidden) {
+                window.location.href = config.universalLink;
             }
         }, 1000);
     }
 
-    // Track analytics as in original
-    async function trackRedirect() {
-        try {
-            await fetch(`${oia_base_url}/redirect/store-clicks`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-HTTP-Status-Override': '301'
-                },
-                body: JSON.stringify({
-                    utm_source: 'inapp',
-                    utm_medium: user_id_oia,
-                    utm_campaign: 'Direct',
-                    uid: id_oia,
-                    click_time_taken: Date.now() - startTime
-                })
-            });
-        } catch (error) {
-            console.error('Failed to track redirect:', error);
-        }
-    }
-
-    // Initialize bypass with 301 redirect simulation
-    trackRedirect();
-    bypassInstagram();
+    // Execute bypass
+    bypassInAppBrowser();
 })();
